@@ -12,14 +12,14 @@ import (
 	"github.com/roadrunner-server/errors"
 	"github.com/roadrunner-server/sdk/v2/events"
 	"github.com/roadrunner-server/sdk/v2/utils"
-	"github.com/roadrunner-server/sdk/v2/worker_watcher/container/channel"
+	"github.com/roadrunner-server/sdk/v2/worker_watcher/container/stack"
 	"go.uber.org/zap"
 )
 
 type workerWatcher struct {
 	sync.RWMutex
 	// actually don't have a lot of impl here, so interface not needed
-	container *channel.Vec
+	container *stack.Stack
 	// used to control Destroy stage (that all workers are in the container)
 	numWorkers *uint64
 	eventBus   event_bus.EventBus
@@ -35,7 +35,7 @@ type workerWatcher struct {
 func NewSyncWorkerWatcher(allocator worker.Allocator, log *zap.Logger, numWorkers uint64, allocateTimeout time.Duration) *workerWatcher {
 	eb, _ := events.Bus()
 	return &workerWatcher{
-		container: channel.NewVector(numWorkers),
+		container: stack.NewStack(numWorkers),
 
 		log:      log,
 		eventBus: eb,
