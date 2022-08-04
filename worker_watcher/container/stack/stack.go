@@ -39,6 +39,47 @@ func (s *Stack) Push(w worker.BaseProcess) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if atomic.LoadInt64(&s.nextIndex) >= int64(s.len) {
+		for i := 0; i < int(s.len); i++ {
+			/*
+				We need to drain vector until we found a worker in the Invalid/Killing/Killed/etc states.
+				BUT while we are draining the vector, some worker might be reallocated and pushed into the v.workers
+				so, down by the code, we might have a problem when pushing the new worker to the v.workers
+			*/
+			wrk := s.workers[i]
+
+			switch wrk.State().Value() {
+			// good states
+			case worker.StateWorking, worker.StateReady:
+				// put the worker back
+				continue
+				/*
+					Bad states are here.
+				*/
+			default:
+				// kill the current worker (just to be sure it's dead)
+				if wrk != nil {
+					_ = wrk.Kill()
+				}
+
+				if w.State().Value() != worker.StateReady {
+					_ = wrk.Kill()
+					return
+				}
+				// replace with the new one and return from the loop
+				// new worker can be ttl-ed at this moment, it's possible to replace TTL-ed worker with new TTL-ed worker
+				// But this case will be handled in the worker_watcher::Get
+
+				// the place for the new worker was occupied before
+				s.workers[i] = w
+				return
+			}
+		}
+		w.State().Set(worker.StateInvalid)
+		_ = w.Kill()
+		return
+	}
+
 	s.workers[s.nextIndex] = w
 	atomic.AddInt64(&s.nextIndex, 1)
 }
